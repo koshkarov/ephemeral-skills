@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ephemeral-skills": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "python", "-m", "ephemeral_skills.server", "--skills-dir", "/home/brealx/repos/skills/skills", "--transport", "stdio"],
+      "cwd": "/home/brealx/repos/ephemeral-skills"
+    }
+  }
+}

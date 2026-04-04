@@ -1,0 +1,203 @@
+{
+  "_description": "End-to-end test cases for ephemeral skills. Prompts are intentionally natural and non-obvious — they don't mention 'skills' or 'search'. The agent must figure out on its own that a skill exists.",
+
+  "cases": [
+    {
+      "id": "pdf-extract",
+      "task": "I have a contract scan at ~/Downloads/contract.pdf — can you pull out all the text so I can search through it?",
+      "expected_skill": "pdf",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "pdf"}}
+        ],
+        "output": [
+          "Response mentions pdfplumber, pypdf, or a specific PDF library",
+          "Response includes code or commands to extract text from a PDF"
+        ]
+      }
+    },
+    {
+      "id": "spreadsheet-cleanup",
+      "task": "I've got a messy Excel file with 3000 rows of customer data, tons of missing emails. Clean it up and add a summary sheet.",
+      "expected_skill": "xlsx",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "xlsx"}}
+        ],
+        "output": [
+          "Response mentions openpyxl, pandas, or a spreadsheet library",
+          "Response includes approach for cleaning data or handling missing values"
+        ]
+      }
+    },
+    {
+      "id": "status-update",
+      "task": "Write me a status update for the engineering leadership meeting. We shipped the auth rewrite, planning to tackle performance next, blocked on the DB migration.",
+      "expected_skill": "internal-comms",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "internal-comms"}}
+        ],
+        "output": [
+          "Response uses a structured update format (progress/plans/problems, or similar)",
+          "Response incorporates the specific details about auth rewrite and DB migration blocker"
+        ]
+      }
+    },
+    {
+      "id": "frontend-redesign",
+      "task": "Can you make our login page look less like every other SaaS on the internet? It's React + Tailwind.",
+      "expected_skill": "frontend-design",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "frontend-design"}}
+        ],
+        "output": [
+          "Response includes React component code or design direction",
+          "Response mentions Tailwind CSS classes or a specific design philosophy"
+        ]
+      }
+    },
+    {
+      "id": "mcp-server-build",
+      "task": "I want to build something that lets Claude talk to our internal inventory API.",
+      "expected_skill": "mcp-builder",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "mcp-builder"}}
+        ],
+        "output": [
+          "Response references MCP, FastMCP, or the MCP SDK",
+          "Response describes how to expose an API as tools for an LLM"
+        ]
+      }
+    },
+    {
+      "id": "board-document",
+      "task": "I need to turn our quarterly numbers into something polished with a cover page I can email to the board.",
+      "expected_skill": "docx",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"}
+        ],
+        "output": [
+          "Response recommends a document format (Word, PDF, or slides) and a specific library",
+          "Response includes steps for creating a polished document with a cover page"
+        ]
+      }
+    },
+    {
+      "id": "slack-emoji-gif",
+      "task": "Make me an animated emoji for Slack — a spinning coffee cup.",
+      "expected_skill": "slack-gif-creator",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "slack-gif-creator"}}
+        ],
+        "output": [
+          "Response mentions GIF dimensions or file size constraints for Slack",
+          "Response includes approach for creating an animated GIF"
+        ]
+      }
+    },
+    {
+      "id": "claude-sdk-app",
+      "task": "I want to build a Python app that uses Claude to summarize documents. How do I get started?",
+      "expected_skill": "claude-api",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "claude-api"}}
+        ],
+        "output": [
+          "Response mentions the anthropic Python SDK or import anthropic",
+          "Response includes API key setup or client initialization"
+        ]
+      }
+    },
+    {
+      "id": "webapp-login-test",
+      "task": "I have a local web app on localhost:3000 and the login form seems broken. Can you check it?",
+      "expected_skill": "webapp-testing",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "webapp-testing"}}
+        ],
+        "output": [
+          "Response mentions Playwright or a browser automation tool",
+          "Response includes steps for testing a form or capturing a screenshot"
+        ]
+      }
+    },
+    {
+      "id": "generative-art",
+      "task": "Create some generative art with particles and flow fields.",
+      "expected_skill": "algorithmic-art",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill", "args_contain": {"name": "algorithmic-art"}}
+        ],
+        "output": [
+          "Response mentions p5.js or a creative coding framework",
+          "Response describes a generative art approach with particles or flow fields"
+        ]
+      }
+    },
+    {
+      "id": "slide-deck",
+      "task": "My boss wants a slide deck by Friday. 10 slides about our product launch. Can you help?",
+      "expected_skill": "pptx",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"},
+          {"tool": "read_skill"}
+        ],
+        "output": [
+          "Response mentions PptxGenJS, python-pptx, or a presentation library",
+          "Response addresses slide structure or asks clarifying questions about content"
+        ]
+      }
+    },
+    {
+      "id": "trivial-math",
+      "task": "What is 2 + 2?",
+      "expected_skill": null,
+      "assertions": {
+        "tool_trace": [],
+        "output": [
+          "Response answers the question directly without searching for skills"
+        ]
+      }
+    },
+    {
+      "id": "trivial-concept",
+      "task": "Explain the difference between async and await in Python.",
+      "expected_skill": null,
+      "assertions": {
+        "tool_trace": [],
+        "output": [
+          "Response explains the concept directly without searching for skills"
+        ]
+      }
+    },
+    {
+      "id": "trivial-git",
+      "task": "How do I rebase my branch onto main?",
+      "expected_skill": null,
+      "assertions": {
+        "tool_trace": [],
+        "output": [
+          "Response provides git rebase instructions without searching for skills"
+        ]
+      }
+    }
+  ]
+}
