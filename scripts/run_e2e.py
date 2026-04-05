@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
-"""CLI runner for e2e tests — run outside pytest for quick iteration.
+"""CLI runner for e2e delivery tests.
+
+Tests the full pipeline: agent searches for skills and reads the correct one.
+No LLM-as-judge — assertions are purely deterministic (tool trace).
+All cases run concurrently for speed.
 
 Usage:
-    # Run all cases with Ollama (default)
-    uv run python scripts/run_e2e.py --skills-dir /path/to/skills
-
-    # Run specific cases
-    uv run python scripts/run_e2e.py --cases pdf-extract,mcp-server-build
-
-    # Use Claude API
-    uv run python scripts/run_e2e.py --backend claude --model claude-sonnet-4-20250514
-
-    # Skip LLM-as-judge (only check tool trace)
-    uv run python scripts/run_e2e.py --skip-judge
-
-    # Save results to file
+    uv run python scripts/run_e2e.py
+    uv run python scripts/run_e2e.py --cases pdf-extract,slide-deck
+    uv run python scripts/run_e2e.py --backend claude --model claude-sonnet-4-6
     uv run python scripts/run_e2e.py --output results.json
 """
 
@@ -25,16 +19,27 @@ import asyncio
 import json
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+# Load .env from tests/e2e/
+_env_file = Path(__file__).parent.parent / "tests" / "e2e" / ".env"
+if _env_file.is_file():
+    from dotenv import load_dotenv
+    load_dotenv(_env_file)
+
+import os
 
 from ephemeral_skills.agent import ClaudeBackend, LLMBackend, OllamaBackend, run_agent
 from ephemeral_skills.catalog import SkillCatalog
 from ephemeral_skills.grader import GradingResult, grade
 
 TEST_CASES_PATH = Path(__file__).parent.parent / "tests" / "e2e" / "test_cases.json"
+
+MAX_CONCURRENCY = int(os.environ.get("E2E_CONCURRENCY", "10"))
 
 
 def load_cases(case_ids: list[str] | None = None) -> list[dict]:
@@ -56,56 +61,59 @@ def make_backend(backend_type: str, model: str, ollama_url: str) -> LLMBackend:
     return OllamaBackend(base_url=ollama_url, model=model)
 
 
+async def _run_one(
+    case: dict,
+    catalog: SkillCatalog,
+    backend: LLMBackend,
+    sem: asyncio.Semaphore,
+) -> dict:
+    start = time.monotonic()
+    async with sem:
+        agent_result = await run_agent(task=case["task"], catalog=catalog, backend=backend)
+    agent_time = time.monotonic() - start
+
+    grading_result = await grade(case=case, agent_result=agent_result, judge_backend=None)
+    summary = grading_result.summary()
+    summary["agent_time_s"] = round(agent_time, 1)
+    return summary
+
+
 async def run_all(
     cases: list[dict],
     catalog: SkillCatalog,
     backend: LLMBackend,
-    judge_backend: LLMBackend | None,
 ) -> list[dict]:
-    results = []
-    total = len(cases)
+    sem = asyncio.Semaphore(MAX_CONCURRENCY)
+    tasks = [_run_one(case, catalog, backend, sem) for case in cases]
+    results = await asyncio.gather(*tasks)
 
-    for i, case in enumerate(cases, 1):
-        case_id = case["id"]
-        print(f"\n[{i}/{total}] Running: {case_id}")
-        print(f"  Task: {case['task'][:100]}...")
-
-        start = time.monotonic()
-        agent_result = await run_agent(
-            task=case["task"],
-            catalog=catalog,
-            backend=backend,
-        )
-        agent_time = time.monotonic() - start
-
-        start = time.monotonic()
-        grading_result = await grade(
-            case=case,
-            agent_result=agent_result,
-            judge_backend=judge_backend,
-        )
-        grade_time = time.monotonic() - start
-
-        summary = grading_result.summary()
-        summary["agent_time_s"] = round(agent_time, 1)
-        summary["grade_time_s"] = round(grade_time, 1)
-        summary["response_preview"] = agent_result.response[:300]
-        results.append(summary)
-
-        # Print result
-        status = "PASS" if grading_result.passed else "FAIL"
-        emoji = "+" if grading_result.passed else "-"
-        print(f"  [{emoji}] {status} ({summary['passed_assertions']}/{summary['total_assertions']} assertions, {agent_time:.1f}s)")
-
-        if summary["failed_assertions"]:
-            for f in summary["failed_assertions"]:
+    # Print as they complete (all at once since gather waits for all)
+    for r in results:
+        status = "PASS" if r["passed"] else "FAIL"
+        emoji = "+" if r["passed"] else "-"
+        print(f"  [{emoji}] {status} {r['case_id']}: "
+              f"{r['passed_assertions']}/{r['total_assertions']} assertions "
+              f"({r['agent_time_s']}s)")
+        if r["failed_assertions"]:
+            for f in r["failed_assertions"]:
                 print(f"      FAIL: {f['text']}")
                 print(f"            {f['evidence']}")
+        if r.get("error"):
+            print(f"      ERROR: {r['error']}")
 
-        if agent_result.error:
-            print(f"      ERROR: {agent_result.error}")
+    return list(results)
 
-    return results
+
+def write_report(results: list[dict], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(results, indent=2))
+    print(f"\nReport saved to {path}")
+
+
+def default_report_path() -> Path:
+    reports_dir = Path(__file__).parent.parent / "reports"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return reports_dir / f"e2e_{timestamp}.json"
 
 
 def print_summary(results: list[dict]):
@@ -114,7 +122,7 @@ def print_summary(results: list[dict]):
     failed = total - passed
 
     print(f"\n{'='*60}")
-    print(f"SUMMARY: {passed}/{total} cases passed")
+    print(f"E2E DELIVERY: {passed}/{total} cases passed")
     if failed:
         print(f"\nFailed cases:")
         for r in results:
@@ -126,27 +134,20 @@ def print_summary(results: list[dict]):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run ephemeral skills e2e tests")
-    parser.add_argument("--skills-dir", type=str, default="/home/brealx/repos/skills/skills")
-    parser.add_argument("--cases", type=str, help="Comma-separated case IDs (default: all)")
-    parser.add_argument("--backend", choices=["ollama", "claude"], default="ollama")
-    parser.add_argument("--model", type=str, help="Model name")
-    parser.add_argument("--ollama-url", type=str, default="http://localhost:11434")
-    parser.add_argument("--judge-backend", choices=["ollama", "claude"], help="Judge backend (default: same as --backend)")
-    parser.add_argument("--judge-model", type=str, help="Judge model (default: same as --model)")
-    parser.add_argument("--skip-judge", action="store_true", help="Skip LLM-as-judge output grading")
+    global MAX_CONCURRENCY
+    parser = argparse.ArgumentParser(description="Run ephemeral skills e2e delivery tests")
+    parser.add_argument("--skills-dir", type=str, default=os.getenv("SKILLS_DIR", "/home/brealx/repos/skills/skills"))
+    parser.add_argument("--cases", type=str, default=os.getenv("E2E_CASES"), help="Comma-separated case IDs")
+    parser.add_argument("--backend", choices=["ollama", "claude"], default=os.getenv("E2E_BACKEND", "ollama"))
+    parser.add_argument("--model", type=str, default=os.getenv("E2E_MODEL"))
+    parser.add_argument("--ollama-url", type=str, default=os.getenv("E2E_OLLAMA_URL", "http://localhost:11434"))
+    parser.add_argument("--concurrency", type=int, default=MAX_CONCURRENCY, help=f"Max concurrent LLM calls (default {MAX_CONCURRENCY})")
     parser.add_argument("--output", type=str, help="Save results to JSON file")
     args = parser.parse_args()
 
-    # Defaults
     if not args.model:
-        args.model = "claude-sonnet-4-20250514" if args.backend == "claude" else "qwen2.5:7b"
-    if not args.judge_backend:
-        args.judge_backend = args.backend
-    if not args.judge_model:
-        args.judge_model = args.model
+        args.model = "claude-sonnet-4-6" if args.backend == "claude" else "qwen2.5:7b"
 
-    # Load
     case_ids = [s.strip() for s in args.cases.split(",")] if args.cases else None
     cases = load_cases(case_ids)
     if not cases:
@@ -158,29 +159,18 @@ def main():
     print(f"Loaded {count} skills from {args.skills_dir}")
 
     backend = make_backend(args.backend, args.model, args.ollama_url)
-    print(f"Agent backend: {args.backend} ({args.model})")
+    print(f"Backend: {args.backend} ({args.model})")
+    print(f"Concurrency: {args.concurrency}")
+    print(f"Running {len(cases)} test case(s)...\n")
 
-    judge_backend: LLMBackend | None = None
-    if not args.skip_judge:
-        judge_backend = make_backend(args.judge_backend, args.judge_model, args.ollama_url)
-        print(f"Judge backend: {args.judge_backend} ({args.judge_model})")
-    else:
-        print("Judge: SKIPPED (tool trace assertions only)")
+    MAX_CONCURRENCY = args.concurrency
 
-    print(f"Running {len(cases)} test case(s)...")
-
-    # Run
-    results = asyncio.run(run_all(cases, catalog, backend, judge_backend))
-
-    # Summary
+    results = asyncio.run(run_all(cases, catalog, backend))
     print_summary(results)
 
-    # Save
-    if args.output:
-        Path(args.output).write_text(json.dumps(results, indent=2))
-        print(f"\nResults saved to {args.output}")
+    report_path = Path(args.output) if args.output else default_report_path()
+    write_report(results, report_path)
 
-    # Exit code
     all_passed = all(r["passed"] for r in results)
     sys.exit(0 if all_passed else 1)
 

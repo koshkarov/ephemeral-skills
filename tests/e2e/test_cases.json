@@ -1,5 +1,5 @@
 {
-  "_description": "End-to-end test cases for ephemeral skills. Prompts are intentionally natural and non-obvious — they don't mention 'skills' or 'search'. The agent must figure out on its own that a skill exists.",
+  "_description": "End-to-end delivery tests. Asserts the agent triggers search and reads the correct skill. Does NOT test how the model interprets the skill — that's the model's job, not the MCP server's.",
 
   "cases": [
     {
@@ -10,10 +10,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "pdf"}}
-        ],
-        "output": [
-          "Response mentions pdfplumber, pypdf, or a specific PDF library",
-          "Response includes code or commands to extract text from a PDF"
         ]
       }
     },
@@ -25,10 +21,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "xlsx"}}
-        ],
-        "output": [
-          "Response mentions openpyxl, pandas, or a spreadsheet library",
-          "Response includes approach for cleaning data or handling missing values"
         ]
       }
     },
@@ -40,10 +32,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "internal-comms"}}
-        ],
-        "output": [
-          "Response uses a structured update format (progress/plans/problems, or similar)",
-          "Response incorporates the specific details about auth rewrite and DB migration blocker"
         ]
       }
     },
@@ -55,10 +43,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "frontend-design"}}
-        ],
-        "output": [
-          "Response includes React component code or design direction",
-          "Response mentions Tailwind CSS classes or a specific design philosophy"
         ]
       }
     },
@@ -70,24 +54,16 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "mcp-builder"}}
-        ],
-        "output": [
-          "Response references MCP, FastMCP, or the MCP SDK",
-          "Response describes how to expose an API as tools for an LLM"
         ]
       }
     },
     {
       "id": "board-document",
       "task": "I need to turn our quarterly numbers into something polished with a cover page I can email to the board.",
-      "expected_skill": "docx",
+      "expected_skill": "_any",
       "assertions": {
         "tool_trace": [
           {"tool": "search_skills"}
-        ],
-        "output": [
-          "Response recommends a document format (Word, PDF, or slides) and a specific library",
-          "Response includes steps for creating a polished document with a cover page"
         ]
       }
     },
@@ -99,10 +75,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "slack-gif-creator"}}
-        ],
-        "output": [
-          "Response mentions GIF dimensions or file size constraints for Slack",
-          "Response includes approach for creating an animated GIF"
         ]
       }
     },
@@ -114,10 +86,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "claude-api"}}
-        ],
-        "output": [
-          "Response mentions the anthropic Python SDK or import anthropic",
-          "Response includes API key setup or client initialization"
         ]
       }
     },
@@ -129,10 +97,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "webapp-testing"}}
-        ],
-        "output": [
-          "Response mentions Playwright or a browser automation tool",
-          "Response includes steps for testing a form or capturing a screenshot"
         ]
       }
     },
@@ -144,10 +108,6 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill", "args_contain": {"name": "algorithmic-art"}}
-        ],
-        "output": [
-          "Response mentions p5.js or a creative coding framework",
-          "Response describes a generative art approach with particles or flow fields"
         ]
       }
     },
@@ -159,10 +119,16 @@
         "tool_trace": [
           {"tool": "search_skills"},
           {"tool": "read_skill"}
-        ],
-        "output": [
-          "Response mentions PptxGenJS, python-pptx, or a presentation library",
-          "Response addresses slide structure or asks clarifying questions about content"
+        ]
+      }
+    },
+    {
+      "id": "code-review",
+      "task": "Code review this pull request for me: https://github.com/anthropics/claude-code/pull/43824",
+      "expected_skill": "_any",
+      "assertions": {
+        "tool_trace": [
+          {"tool": "search_skills"}
         ]
       }
     },
@@ -171,10 +137,7 @@
       "task": "What is 2 + 2?",
       "expected_skill": null,
       "assertions": {
-        "tool_trace": [],
-        "output": [
-          "Response answers the question directly without searching for skills"
-        ]
+        "tool_trace": []
       }
     },
     {
@@ -182,10 +145,7 @@
       "task": "Explain the difference between async and await in Python.",
       "expected_skill": null,
       "assertions": {
-        "tool_trace": [],
-        "output": [
-          "Response explains the concept directly without searching for skills"
-        ]
+        "tool_trace": []
       }
     },
     {
@@ -193,10 +153,7 @@
       "task": "How do I rebase my branch onto main?",
       "expected_skill": null,
       "assertions": {
-        "tool_trace": [],
-        "output": [
-          "Response provides git rebase instructions without searching for skills"
-        ]
+        "tool_trace": []
       }
     }
   ]

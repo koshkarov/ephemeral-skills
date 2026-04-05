@@ -55,7 +55,8 @@ TOOL_DEFINITIONS_OPENAI = [
             "name": "read_skill",
             "description": (
                 "Read a skill's full instructions, or a specific supporting file. "
-                "Call this after search_skills to load the skill you want to use."
+                "Call this after search_skills to load the skill you want to use. "
+                "If multiple search results look relevant, read the most promising one first — then read others if you need more context or a better fit."
             ),
             "parameters": {
                 "type": "object",
@@ -116,7 +117,7 @@ def execute_tool(catalog: SkillCatalog, tool_name: str, arguments: dict) -> str:
         results = search(catalog.all_skills(), query, limit=limit)
         return json.dumps({
             "results": [
-                {"name": r.skill.name, "description": r.skill.description}
+                {"name": r.skill.name, "description": r.skill.description, "relevance_score": round(r.score, 1)}
                 for r in results
             ],
             "total_available": len(catalog),
@@ -210,7 +211,7 @@ class OllamaBackend(LLMBackend):
 class ClaudeBackend(LLMBackend):
     """Anthropic Claude API backend."""
 
-    def __init__(self, model: str = "claude-sonnet-4-20250514", api_key: str | None = None):
+    def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
         try:
             import anthropic
         except ImportError:

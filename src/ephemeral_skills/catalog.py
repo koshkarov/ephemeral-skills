@@ -168,7 +168,7 @@ def read_resource(skill: Skill, file_path: str) -> str | None:
         return None
     try:
         return resolved.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
 
 

@@ -50,10 +50,12 @@ mcp = FastMCP(
 
 @mcp.tool()
 async def search_skills(query: str, limit: int = 5) -> str:
-    """Search for specialized skills before attempting any task beyond simple Q&A. Skills contain expert procedures, specific tools, and step-by-step instructions that produce significantly better results than general knowledge. ALWAYS call this tool first when the user asks you to create, build, write, format, analyze, process, test, or design something — there is likely a skill with the exact right approach. The search is fast and cheap; the cost of missing a relevant skill is high.
+    """MANDATORY first step before starting any user task. Search for a specialized skill that may contain expert procedures, project-specific standards, or required tools for the task. Call this even if you think you know how to do it — the skill may have specific requirements that override general knowledge. The only exceptions are single-turn factual questions (definitions, math, simple lookups). The search is fast; skipping it risks producing work that doesn't follow required procedures.
+
+    Results are ranked by relevance. When multiple results look relevant, read the descriptions carefully and pick the best fit — or read more than one skill if the task spans multiple domains.
 
     Args:
-        query: Keywords describing the task (e.g. "create pdf", "slide deck", "test web app", "write status update")
+        query: Keywords describing the task (e.g. "create pdf", "slide deck", "test web app", "code review", "write status update")
         limit: Maximum number of results to return (default 5)
     """
     catalog: SkillCatalog = mcp.get_context().request_context.lifespan_context["catalog"]
@@ -63,6 +65,7 @@ async def search_skills(query: str, limit: int = 5) -> str:
             {
                 "name": r.skill.name,
                 "description": r.skill.description,
+                "relevance_score": round(r.score, 1),
             }
             for r in results
         ],
@@ -73,7 +76,7 @@ async def search_skills(query: str, limit: int = 5) -> str:
 
 @mcp.tool()
 async def read_skill(name: str, file: str | None = None) -> str:
-    """Read a skill's full instructions or a specific supporting file. Always read the skill before starting the task — it contains the exact tools, code patterns, and procedures to follow.
+    """Read a skill's full instructions or a specific supporting file. Always read at least one skill before starting the task — it contains the exact tools, code patterns, and procedures to follow. If multiple search results look relevant, read the most promising one first, then read others if you need more context or a better fit.
 
     Args:
         name: Skill name (from search results)

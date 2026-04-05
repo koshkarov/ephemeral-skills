@@ -84,5 +84,6 @@ def search(skills: list[Skill], query: str, limit: int = 10) -> list[SearchResul
         if score > 0:
             results.append(SearchResult(skill=skill, score=score))
 
-    results.sort(key=lambda r: r.score, reverse=True)
+    # Sort by score descending, then skill name ascending as a stable tiebreaker
+    results.sort(key=lambda r: (-r.score, r.skill.name))
     return results[:limit]

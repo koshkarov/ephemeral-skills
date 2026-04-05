@@ -7,3 +7,5 @@ build/
 .pytest_cache/
 uv.lock
 skills/
+**/.env
+reports/

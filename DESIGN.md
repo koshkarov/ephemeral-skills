@@ -56,36 +56,6 @@ The server is a Python MCP server over **Streamable HTTP** (deployable to any ho
 
 The skills directory follows the [Agent Skills specification](https://github.com/anthropics/agentskills). Each skill is a directory containing a `SKILL.md` file with YAML frontmatter + markdown body, plus optional `scripts/`, `references/`, and `assets/` directories.
 
-### Skills Source (for development and testing)
-
-The Anthropic shared skills repository at `/repos/skills/skills/` contains 17 production-quality skills that serve as the test corpus:
-
-```
-algorithmic-art, brand-guidelines, canvas-design, claude-api,
-doc-coauthoring, docx, frontend-design, internal-comms, mcp-builder,
-pdf, pptx, skill-creator, slack-gif-creator, theme-factory,
-web-artifacts-builder, webapp-testing, xlsx
-```
-
-These are real skills with optimized descriptions — ideal for validating search quality.
-
-## Running the Server
-
-```bash
-# Streamable HTTP (default — for deployment and agent integration)
-uv run python -m ephemeral_skills.server \
-    --skills-dir /path/to/skills \
-    --port 8080
-
-# stdio (for local MCP client testing)
-uv run python -m ephemeral_skills.server \
-    --skills-dir /path/to/skills \
-    --transport stdio
-```
-
-The server loads the skill catalog during startup via an async lifespan context.
-Catalog state is shared across requests through `FastMCP`'s lifespan mechanism.
-
 ## MCP Tools
 
 ### `search_skills`
@@ -113,6 +83,17 @@ Find skills matching a query. Returns Tier 1 metadata only.
 ```
 
 **Error handling:** Returns an empty results list for queries that match nothing. Never errors on valid input.
+
+### Tool Description Design
+
+The `search_skills` tool description is critical — it determines whether the agent actually calls the tool before starting a task. The description must be assertive enough to trigger search for non-obvious tasks (e.g., "write a status update") while allowing the agent to skip search for trivial Q&A.
+
+Current approach: frame the tool as a **mandatory first step** rather than an optional lookup:
+- "MANDATORY first step before starting any user task"
+- "Call this even if you think you know how to do it"
+- "The only exceptions are single-turn factual questions"
+
+This is the single most impactful lever for the system's effectiveness. If the agent doesn't search, it can't find skills.
 
 ### `read_skill`
 
@@ -151,7 +132,7 @@ Load a skill's full content or a specific supporting file. Returns Tier 2 or Tie
 - File not found → returns `{"error": "...", "available_resources": [...]}`
 - Both cases include helpful context so the agent can self-correct.
 
-**Security:** Path traversal prevention — the resolved path must stay within the skill's directory. Requests like `../../etc/passwd` return a file-not-found error (same as above).
+**Security:** Path traversal prevention — the resolved path must stay within the skill's directory.
 
 ## Skill Format
 
@@ -173,11 +154,6 @@ metadata:
 # PDF Processing
 
 ## When to use
-Use this when the user needs to extract text, fill forms, or merge PDFs.
-
-## Procedure
-1. Use pdfplumber for text extraction
-2. For scanned PDFs, fall back to pdf2image + pytesseract
 ...
 ```
 
@@ -226,14 +202,6 @@ Scores accumulate across all query tokens. Results are sorted by total score des
 
 The search is intentionally simple. The agent calling the tool is already an LLM — it can formulate good keyword queries and retry with different terms. If keyword search proves insufficient at scale, the MCP tool interface stays the same and only the backend changes (e.g., to BM25, embeddings, or LLM-as-judge).
 
-### Validated against real skills
-
-The search correctly handles 15 tested query patterns against the 17 Anthropic skills:
-- Direct queries: "extract text from a pdf" → `pdf` (score 13.0)
-- Indirect queries: "make slides for my pitch deck" → `pptx`
-- Near-misses: "build a react landing page" → `frontend-design` (not `algorithmic-art`)
-- Irrelevant queries: "quantum physics thermodynamics" → no results
-
 ## SKILL.md Parsing
 
 The parser follows Claude Code's two-pass approach (ported from `code/src/utils/frontmatterParser.ts`):
@@ -244,7 +212,7 @@ The parser follows Claude Code's two-pass approach (ported from `code/src/utils/
 4. **Field extraction**: `name` and `description` are required; `license`, `compatibility`, `metadata` are optional
 5. **Body**: everything after the closing `---`, stripped of leading/trailing whitespace
 
-The two-pass approach handles real-world skills that use unquoted special characters in descriptions. This is common in the Anthropic skills set — e.g., `claude-api` has a description containing colons and backticks. All 17 skills parse successfully.
+The two-pass approach handles real-world skills that use unquoted special characters in descriptions.
 
 ### Differences from Claude Code's parser
 - Claude Code uses TypeScript + `js-yaml`; we use Python + `pyyaml`
@@ -255,110 +223,89 @@ The two-pass approach handles real-world skills that use unquoted special charac
 
 Testing validates the entire concept: can an agent discover, read, and effectively use ephemeral skills via MCP?
 
-### Level 1: Unit Tests — Catalog & Search Quality (implemented)
+### Level 1: Unit Tests — Catalog & Search Quality
 
 **39 tests, all passing.**
 
-- **Catalog tests** (`test_catalog.py`, 17 tests): frontmatter parsing (basic, no frontmatter, special chars, metadata, multiline), skill parsing (valid, missing name, missing description, no file, lowercase variant), catalog loading (real skills, validation, nonexistent dir, deduplication), resource listing, path traversal prevention
-- **Search tests** (`test_search.py`, 22 tests): tokenizer basics, 15 parametrized search quality cases against real Anthropic skills, edge cases (irrelevant queries, limit, empty query)
+- **Catalog tests** (`test_catalog.py`, 17 tests): frontmatter parsing, skill parsing, catalog loading, resource listing, path traversal prevention
+- **Search tests** (`test_search.py`, 22 tests): tokenizer, 15 parametrized search quality cases against real skills, edge cases
 
 These run fast (<0.5s), no LLM needed, pure Python pytest.
 
-```bash
-uv run pytest tests/test_catalog.py tests/test_search.py -v
-```
+### Level 2: Integration Tests — MCP Round-Trip
 
-### Level 2: Integration Tests — MCP Round-Trip (implemented, requires running server)
+Test the MCP server tool calls end-to-end via HTTP (`test_server.py`). Requires a running server instance.
 
-Test the MCP server tool calls end-to-end via HTTP:
-- `search_skills` returns valid JSON with ranked results
-- `read_skill` returns full SKILL.md body (frontmatter stripped) + resource list
-- `read_skill` with `file` returns supporting file content
-- Path traversal is blocked
-- Missing skills return error + available skills list
-
-```bash
-# Terminal 1: start server
-uv run python -m ephemeral_skills.server --skills-dir /path/to/skills
-
-# Terminal 2: run integration tests
-uv run pytest tests/test_server.py -v
-```
-
-### Level 3: End-to-End Tests — Agent Loop (not yet implemented)
+### Level 3: End-to-End Tests — Agent Loop
 
 The real test: can an actual LLM agent use the MCP server to find and apply the right skill?
 
-```json
-[
-  {
-    "task": "I need to create a Word document with a table of contents",
-    "expected_skill": "docx",
-    "assertions": [
-      "Agent called search_skills",
-      "Agent called read_skill with 'docx'",
-      "Agent followed the skill's instructions"
-    ]
-  }
-]
+**15 test cases** with natural, non-obvious prompts — none mention "skills" or "search". The agent must figure out on its own that a skill exists.
+
+**Architecture:**
+
+```
+Task → Agent Loop → Tool Calls → Grading
+         │                          │
+         │  LLM (Ollama/Claude)     │  Tool trace (deterministic)
+         │  ↕ tool calls            │  Output quality (LLM-as-judge)
+         │  Catalog (search/read)   │
+         ↓                          ↓
+    AgentResult              GradingResult
 ```
 
 **How it works:**
-1. Start the ephemeral-skills MCP server pointed at the skills directory
-2. Connect a local LLM (via Ollama or any OpenAI-compatible API) as the agent
-3. Give the agent a system prompt that tells it about the `search_skills` and `read_skill` tools
-4. Feed it a test task
-5. Capture the tool call sequence and final output
-6. Assert: did it search? Did it find the right skill? Did it read it? Did the output match expectations?
+1. Load the skill catalog in-process (no separate server needed)
+2. Send the task to an LLM (Ollama or Claude API) with tool definitions
+3. The agent loop executes tool calls (`search_skills`, `read_skill`) against the catalog
+4. Capture the full tool call trace and final response
+5. Grade with two assertion types:
+   - **Tool trace** (deterministic): did it call `search_skills`? Did it call `read_skill` with the expected skill name?
+   - **Output quality** (LLM-as-judge): does the response reference the right libraries/tools? Does it follow the skill's guidance?
 
-**Why local LLM:** These tests run frequently during development. Using a local model (e.g., Qwen, Llama, Mistral via Ollama) keeps costs at zero and avoids rate limits. The tests validate the *system* works, not the quality of a specific model.
+**Test cases** are defined in `tests/e2e/test_cases.json` — add, modify, or remove cases without touching code.
 
-**Grading:** For assertions that are hard to check programmatically ("Agent followed the skill's instructions"), we can use LLM-as-judge: feed the output + assertions to the local LLM and ask it to grade PASS/FAIL with evidence. This follows the eval pattern from the agentskills best practices.
+**Backends:** Ollama (local, free, default) and Claude API. The judge backend can be configured separately from the agent backend.
+
+**Configuration** via `tests/e2e/.env` (gitignored), env vars, or CLI flags. See README for details.
 
 ## Project Structure
 
 ```
 ephemeral-skills/
-├── DESIGN.md                    # This document
-├── pyproject.toml               # Python project config (uv)
+├── DESIGN.md                         # This document
+├── README.md                         # Quick start and test instructions
+├── pyproject.toml                    # Python project config (uv)
+├── .mcp.json                         # MCP server config for Claude Code
 ├── src/
 │   └── ephemeral_skills/
 │       ├── __init__.py
-│       ├── server.py            # MCP server — tool definitions + handlers
-│       ├── catalog.py           # Skill discovery — scan dir, parse SKILL.md, build index
-│       └── search.py            # Keyword search engine
-└── tests/
-    ├── conftest.py              # Shared fixtures (catalog from Anthropic skills)
-    ├── test_catalog.py          # Level 1: parsing + catalog (17 tests)
-    ├── test_search.py           # Level 1: search quality (22 tests)
-    └── test_server.py           # Level 2: MCP round-trip (requires running server)
+│       ├── server.py                 # MCP server — tool definitions + handlers
+│       ├── catalog.py                # Skill discovery — scan dir, parse SKILL.md
+│       ├── search.py                 # Keyword search engine
+│       ├── agent.py                  # Agent loop for e2e testing (Ollama/Claude)
+│       └── grader.py                 # Grading — tool trace + LLM-as-judge
+├── tests/
+│   ├── conftest.py                   # Shared fixtures (catalog from real skills)
+│   ├── test_catalog.py               # Level 1: parsing + catalog (17 tests)
+│   ├── test_search.py                # Level 1: search quality (22 tests)
+│   ├── test_server.py                # Level 2: MCP round-trip
+│   └── e2e/
+│       ├── .env                      # Credentials (gitignored)
+│       ├── test_cases.json           # 15 test cases — edit here, not in code
+│       └── test_e2e.py               # Level 3: agent loop (parametrized from JSON)
+└── scripts/
+    └── run_e2e.py                    # CLI runner for e2e tests
 ```
 
-## Dependencies
-
-```toml
-[project]
-requires-python = ">=3.11"
-dependencies = [
-    "mcp[cli]>=1.0",     # MCP server SDK with CLI (includes uvicorn, starlette, httpx)
-    "pyyaml>=6.0",       # YAML parsing for frontmatter
-    "uvicorn>=0.30",     # ASGI server for HTTP transport
-]
-
-[dependency-groups]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.24",
-    "httpx>=0.27",       # For MCP HTTP client in tests + e2e LLM calls
-]
-```
-
-### Key implementation details
+## Key Implementation Details
 
 - **Lifespan pattern**: The skill catalog is loaded once at startup via FastMCP's `lifespan` async context manager. Tool handlers access it through `mcp.get_context().request_context.lifespan_context["catalog"]`.
-- **`create_server()` factory**: Exported from `server.py` for programmatic use in tests — creates a configured FastMCP instance without touching the module-level singleton.
+- **`create_server()` factory**: Exported from `server.py` for programmatic use — creates a configured FastMCP instance without touching the module-level singleton.
 - **Skills dir resolution**: `SKILLS_DIR` env var → `--skills-dir` CLI arg → `./skills` fallback.
+- **Wrong path detection**: The catalog warns when it finds subdirectories with nested skills but no SKILL.md at their root (e.g., pointing at `/repos/skills/` instead of `/repos/skills/skills/`).
 - **Transport options**: `--transport streamable-http` (default, for deployment), `stdio` (for local MCP pipes), `sse` (legacy).
+- **`.env` loading**: Both `test_e2e.py` and `run_e2e.py` auto-load `tests/e2e/.env` via `python-dotenv`.
 
 ## Open Questions (Out of Scope for v1)
 
@@ -367,4 +314,4 @@ dev = [
 - **Catalog in system prompt**: Should the server support a `list_all_skills` tool for agents that want to build a catalog upfront? (Not needed if search works well)
 - **Caching/TTL**: Should the server watch for filesystem changes? (Restart to reload for v1)
 - **Multi-server federation**: Multiple ephemeral skill servers with merged results? (Future)
-- **Skill body for scripts**: Ephemeral skills can reference `scripts/` files, but the agent can't *execute* them remotely. For now this is read-only — the agent reads the script content and adapts. A future version could expose a `run_skill_script` tool.
+- **Remote script execution**: Skills can reference `scripts/` files, but the agent can't execute them remotely. A future version could expose a `run_skill_script` tool.

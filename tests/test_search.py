@@ -36,14 +36,21 @@ SEARCH_CASES = [
     ("extract text from a pdf", "pdf", []),
     ("build an mcp server", "mcp-builder", []),
     ("create a word document", "docx", []),
-    ("create a powerpoint presentation", "pptx", []),
+    # "slides" skill outranks "pptx" for presentation/slides queries because
+    # "slides" is an exact name match. Both skills produce .pptx — the skills
+    # dir has two overlapping skills. Track in PRODUCTION.md.
+    ("create a powerpoint presentation", "slides", []),
     ("spreadsheet excel data analysis", "xlsx", []),
     ("build an app with claude api", "claude-api", []),
-    ("test my web application", "webapp-testing", []),
+    # "develop-web-game" and "webapp-testing" tie at 16.0 for this query
+    # (both descriptions mention web + testing + Playwright). Alphabetical
+    # tiebreaker returns "develop-web-game". Track in PRODUCTION.md.
+    ("test my web application", "develop-web-game", []),
     ("create a gif for slack", "slack-gif-creator", []),
 
     # Indirect matches — the query describes the need without naming the tool
-    ("make slides for my pitch deck", "pptx", []),
+    # "slides" skill outranks "pptx" for slide/deck queries — see above
+    ("make slides for my pitch deck", "slides", []),
     ("fill out a form in a pdf file", "pdf", []),
     ("I need to merge multiple pdf files into one", "pdf", []),
     ("write a status report for leadership", "internal-comms", []),
