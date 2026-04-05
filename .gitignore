@@ -9,3 +9,7 @@ uv.lock
 skills/
 **/.env
 reports/
+
+# Local config — contains machine-specific paths and personal settings
+.mcp.json
+.claude/
