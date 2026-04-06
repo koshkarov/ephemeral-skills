@@ -42,10 +42,38 @@ TOOL_DEFINITIONS_OPENAI = [
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max results (default 5)",
+                        "description": "Max results (default 10)",
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of results to skip for pagination (default 0)",
                     },
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_skills",
+            "description": (
+                "List all available skills with pagination. "
+                "Use this to browse the full catalog when you're unsure what to search for."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "offset": {
+                        "type": "integer",
+                        "description": "Number of skills to skip for pagination (default 0)",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results per page (default 20)",
+                    },
+                },
+                "required": [],
             },
         },
     },
@@ -113,15 +141,30 @@ def execute_tool(catalog: SkillCatalog, tool_name: str, arguments: dict) -> str:
     """Execute a tool call against the catalog. Returns the tool result as a string."""
     if tool_name == "search_skills":
         query = arguments.get("query", "")
-        limit = arguments.get("limit", 5)
-        results = search(catalog.all_skills(), query, limit=limit)
+        limit = arguments.get("limit", 10)
+        offset = arguments.get("offset", 0)
+        all_results = search(catalog.all_skills(), query, limit=offset + limit)
+        page = all_results[offset:]
         return json.dumps({
             "results": [
                 {"name": r.skill.name, "description": r.skill.description, "relevance_score": round(r.score, 1)}
-                for r in results
+                for r in page
             ],
-            "total_available": len(catalog),
+            "count": len(page),
+            "totalCount": len(catalog),
             "query": query,
+        })
+
+    elif tool_name == "list_skills":
+        offset = arguments.get("offset", 0)
+        limit = arguments.get("limit", 20)
+        all_skills = sorted(catalog.all_skills(), key=lambda s: s.name)
+        page = all_skills[offset:offset + limit]
+        return json.dumps({
+            "skills": [{"name": s.name, "description": s.description} for s in page],
+            "count": len(page),
+            "totalCount": len(catalog),
+            "offset": offset,
         })
 
     elif tool_name == "read_skill":
@@ -211,7 +254,7 @@ class OllamaBackend(LLMBackend):
 class ClaudeBackend(LLMBackend):
     """Anthropic Claude API backend."""
 
-    def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
+    def __init__(self, model: str = "claude-haiku-4-5-20251001", api_key: str | None = None):
         try:
             import anthropic
         except ImportError:

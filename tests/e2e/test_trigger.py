@@ -117,7 +117,7 @@ SHOULD_NOT_SEARCH: list[tuple[str, str]] = [
 def _get_backend() -> LLMBackend:
     backend_type = os.environ.get("E2E_BACKEND", "ollama")
     if backend_type == "claude":
-        model = os.environ.get("E2E_MODEL", "claude-sonnet-4-6")
+        model = os.environ.get("E2E_MODEL", "claude-haiku-4-5-20251001")
         return ClaudeBackend(model=model)
     model = os.environ.get("E2E_MODEL", "qwen2.5:7b")
     url = os.environ.get("E2E_OLLAMA_URL", "http://localhost:11434")

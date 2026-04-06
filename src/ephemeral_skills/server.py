@@ -49,17 +49,19 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-async def search_skills(query: str, limit: int = 5) -> str:
+async def search_skills(query: str, limit: int = 10, offset: int = 0) -> str:
     """MANDATORY first step before starting any user task. Search for a specialized skill that may contain expert procedures, project-specific standards, or required tools for the task. Call this even if you think you know how to do it — the skill may have specific requirements that override general knowledge. The only exceptions are single-turn factual questions (definitions, math, simple lookups). The search is fast; skipping it risks producing work that doesn't follow required procedures.
 
     Results are ranked by relevance. When multiple results look relevant, read the descriptions carefully and pick the best fit — or read more than one skill if the task spans multiple domains.
 
     Args:
         query: Keywords describing the task (e.g. "create pdf", "slide deck", "test web app", "code review", "write status update")
-        limit: Maximum number of results to return (default 5)
+        limit: Maximum number of results to return (default 10)
+        offset: Number of results to skip for pagination (default 0)
     """
     catalog: SkillCatalog = mcp.get_context().request_context.lifespan_context["catalog"]
-    results = search(catalog.all_skills(), query, limit=limit)
+    all_results = search(catalog.all_skills(), query, limit=offset + limit)
+    page = all_results[offset:]
     return json.dumps({
         "results": [
             {
@@ -67,10 +69,30 @@ async def search_skills(query: str, limit: int = 5) -> str:
                 "description": r.skill.description,
                 "relevance_score": round(r.score, 1),
             }
-            for r in results
+            for r in page
         ],
-        "total_available": len(catalog),
+        "count": len(page),
+        "totalCount": len(catalog),
         "query": query,
+    })
+
+
+@mcp.tool()
+async def list_skills(offset: int = 0, limit: int = 20) -> str:
+    """List all available skills with pagination. Use this to browse the full catalog when you're unsure what to search for or want to see everything available.
+
+    Args:
+        offset: Number of skills to skip for pagination (default 0)
+        limit: Maximum number of results per page (default 20)
+    """
+    catalog: SkillCatalog = mcp.get_context().request_context.lifespan_context["catalog"]
+    all_skills = sorted(catalog.all_skills(), key=lambda s: s.name)
+    page = all_skills[offset:offset + limit]
+    return json.dumps({
+        "skills": [{"name": s.name, "description": s.description} for s in page],
+        "count": len(page),
+        "totalCount": len(catalog),
+        "offset": offset,
     })
 
 
@@ -131,6 +153,7 @@ def create_server(
     )
     # Register the same tools on the new instance
     server.tool()(search_skills)
+    server.tool()(list_skills)
     server.tool()(read_skill)
     return server
 

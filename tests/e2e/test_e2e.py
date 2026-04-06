@@ -67,7 +67,7 @@ def _get_backend_type(env_prefix: str = "E2E") -> str:
 def _make_backend(env_prefix: str = "E2E") -> LLMBackend:
     backend_type = _get_backend_type(env_prefix)
     if backend_type == "claude":
-        model = os.environ.get(f"{env_prefix}_MODEL", "claude-sonnet-4-6")
+        model = os.environ.get(f"{env_prefix}_MODEL", "claude-haiku-4-5-20251001")
         return ClaudeBackend(model=model)
     else:
         model = os.environ.get(f"{env_prefix}_MODEL", "qwen2.5:7b")
